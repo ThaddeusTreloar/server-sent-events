@@ -16,9 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v2
+      with:
+        components: rustfmt,clippy
 
     - name: Check formatting
       run: cargo fmt --check
