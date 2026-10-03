@@ -10,7 +10,7 @@ pub(super) struct EventBuffer {
 }
 
 impl EventBuffer {
-    pub(super) fn dispatch(&mut self) -> Option<Event> {
+    pub(super) fn dispatch(&mut self) -> Option<Event<String>> {
         // If data is none then we discard the event
         // and reset the event and data buffers.
         if self.data.is_none() {
@@ -36,12 +36,12 @@ impl EventBuffer {
 
                     s
                 })
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             // last_event_id is preserved until updated
-            id: self.last_event_id.clone().unwrap_or(String::new()),
+            id: self.last_event_id.clone().unwrap_or_default(),
             // The spec doesn't say to unset this so we will clone it
             // every time. Might be worth optimisation in future.
-            retry: self.retry.clone(),
+            retry: self.retry,
         })
     }
 }
