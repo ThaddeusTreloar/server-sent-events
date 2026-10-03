@@ -1,12 +1,13 @@
 [package]
 name = "server-sent-events"
 description = "A simple SSE parsing library with extensions for streams, and reqwest and hyper clients."
-version = "0.1.0"
+version = "0.0.0"
 edition = "2024"
 licence = "MPL-2.0"
 keywords = ["html", "web", "sse"]
 categories = ["web-programming", "parsing"]
 readme = "README.md"
+rust-version = "1.96.0"
 
 [dependencies]
 bytes = { version = "1", optional = true }
