@@ -1,5 +1,8 @@
-/// Written against HTML Server-Sent Events Spec @ 2/10/2026
-/// link: https://html.spec.whatwg.org/multipage/server-sent-events.html#processField
+//! Event type and utilities.
+//!
+//! Written against HTML Server-Sent Events Spec.
+//!
+//! link: <https://html.spec.whatwg.org/multipage/server-sent-events.html#processField>
 use std::time::Duration;
 
 #[cfg(feature = "json")]
@@ -8,19 +11,31 @@ use serde::de::DeserializeOwned;
 use serde_json::error::Category;
 
 mod buffer;
-pub mod state;
+pub(crate) mod state;
 
+/// Holds the data of a server sent event.
 #[derive(Debug)]
 pub struct Event<Data> {
+    /// If the server provides no event type, the default is `message`.
     pub event: String,
+    /// The event data.
     pub data: Data,
+    /// Derived from the current values in the state machine, which is only updated
+    /// when the server sends an updated ID field. As such, if the target server does not
+    /// return IDs or does not update them, this will remain static. Defaults to an
+    /// empty string.
     pub id: String,
+    /// Derived from the current values in the state machine, which is only updated
+    /// when the server sends an updated retry field. As such, if the target server does not
+    /// return retry or does not update it, this will remain static. Defaults to None.
     pub retry: Option<Duration>,
 }
 
 impl Event<String> {
+    /// Parses the plaintext data in this event as json and returns
+    /// a new instance of event, with the provided `Data` type.
     #[cfg(feature = "json")]
-    pub(super) fn into_parsed_json_data<Data>(self) -> Result<Event<Data>, EventParsingError>
+    pub fn into_parsed_json_data<Data>(self) -> Result<Event<Data>, EventParsingError>
     where
         Data: DeserializeOwned,
     {
@@ -52,13 +67,18 @@ impl Event<String> {
     }
 }
 
+/// A JSON deserialisation error returned while trying to decode the event data.
 #[cfg(feature = "json")]
 #[derive(Debug, thiserror::Error)]
 pub enum EventParsingError {
+    /// JSON Deserialisation has encountered an unrecoverable error.
     #[error("Failed to deserialise json data, line: {line}, column: {column}, cause: {cause}")]
     JsonDeserialisation {
+        /// The line the error ocurred on.
         line: usize,
+        /// The column the error ocurred on.
         column: usize,
+        /// An indicative cause of the error.
         cause: &'static str,
     },
 }
@@ -94,5 +114,25 @@ mod test {
 
         assert!(data_event.data.field == "hello");
         assert!(data_event.data.count == 10);
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn test_json_serialisation_errors_on_utf8_replacement() {
+        // Per spec, malformed byte sequences are replaced with U+FFFD
+        // rather than ending the stream with an error. Here that lands
+        // right after the opening brace, breaking JSON syntax, so it
+        // surfaces as a JSON deserialisation error rather than a utf8 one.
+
+        let event = Event {
+            event: String::from("message"),
+            data: String::from("{\u{FFFD}\"field\":\"hi\",\"count\":10}"),
+            id: String::default(),
+            retry: None,
+        };
+
+        let data_event_result = event.into_parsed_json_data::<Datum>();
+
+        assert!(data_event_result.is_err());
     }
 }

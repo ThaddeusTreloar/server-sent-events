@@ -7,6 +7,8 @@ use futures::Stream;
 use crate::event::Event;
 use crate::event::state::EventStreamState;
 
+/// An adapter that yields events as they complete from
+/// the inner byte stream.
 pub struct EventStream<S> {
     inner: S,
     state: EventStreamState,
@@ -23,20 +25,12 @@ impl<S> EventStream<S> {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum EventStreamError<E> {
-    #[error("received invalid utf8 while parsing SSE stream")]
-    InvalidUtf8,
-    #[error(transparent)]
-    Source(E),
-}
-
 impl<S, B, E> Stream for EventStream<S>
 where
     S: Stream<Item = Result<B, E>> + Unpin,
     B: AsRef<[u8]>,
 {
-    type Item = Result<Event<String>, EventStreamError<E>>;
+    type Item = Result<Event<String>, E>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -49,13 +43,11 @@ where
             match Pin::new(&mut this.inner).poll_next(cx) {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Ready(Some(Err(e))) => {
-                    return Poll::Ready(Some(Err(EventStreamError::Source(e))));
+                Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e))),
+                Poll::Ready(Some(Ok(bytes))) => {
+                    let events = this.state.parse(bytes.as_ref());
+                    this.queue.extend(events);
                 }
-                Poll::Ready(Some(Ok(bytes))) => match this.state.parse(bytes.as_ref()) {
-                    Ok(events) => this.queue.extend(events),
-                    Err(_) => return Poll::Ready(Some(Err(EventStreamError::InvalidUtf8))),
-                },
             }
         }
     }
@@ -102,18 +94,6 @@ mod test {
         let chunks: Vec<Result<&[u8], MyErr>> = vec![Err(MyErr)];
         let mut es = stream::iter(chunks).event_stream();
         let result = block_on(es.next()).unwrap();
-        assert!(matches!(
-            result,
-            Err(super::EventStreamError::Source(MyErr))
-        ));
-    }
-
-    #[test]
-    fn test_event_stream_invalid_utf8_errors() {
-        let chunks: Vec<Result<&[u8], Infallible>> = vec![Ok(b"\xff\xfe".as_slice())];
-
-        let mut es = stream::iter(chunks).event_stream();
-        let result = block_on(es.next()).unwrap();
-        assert!(matches!(result, Err(super::EventStreamError::InvalidUtf8)));
+        assert!(matches!(result, Err(MyErr)));
     }
 }

@@ -7,16 +7,15 @@ use serde::de::DeserializeOwned;
 
 use crate::event::{Event, EventParsingError};
 
-use super::event::{EventStream, EventStreamError};
+use super::event::EventStream;
 
-/// Deserialises `data` as JSON for every event produced by an inner
-/// [`EventStream`], reusing its byte-chunking/line-parsing state machine
-/// entirely rather than re-driving it from raw bytes.
+/// A wrapper adapter that deserialises `data` as JSON for every event produced
+/// from an inner [`EventStream`].
 pub struct JsonEventStream<S, Data> {
     inner: EventStream<S>,
     // `Data` is never actually stored, so a plain `PhantomData<Data>` would
     // needlessly tie this struct's auto traits (e.g. `Unpin`) to `Data`'s.
-    // The fn-pointer form sidesteps that.
+    // The fn-pointer is a work around for simplicity.
     _data: PhantomData<fn() -> Data>,
 }
 
@@ -29,23 +28,15 @@ impl<S, Data> JsonEventStream<S, Data> {
     }
 }
 
+/// An error returned from a [`JsonEventStream`].
 #[derive(Debug, thiserror::Error)]
 pub enum JsonEventStreamError<E> {
-    #[error("received invalid utf8 while parsing SSE stream")]
-    InvalidUtf8,
+    /// An error returned transparently from the inner stream.
     #[error(transparent)]
     Source(E),
+    /// The stream failed to deserialise the data field as JSON, yielding an [`EventParsingError`].
     #[error(transparent)]
     Json(#[from] EventParsingError),
-}
-
-impl<E> From<EventStreamError<E>> for JsonEventStreamError<E> {
-    fn from(err: EventStreamError<E>) -> Self {
-        match err {
-            EventStreamError::InvalidUtf8 => JsonEventStreamError::InvalidUtf8,
-            EventStreamError::Source(e) => JsonEventStreamError::Source(e),
-        }
-    }
 }
 
 impl<S, B, E, Data> Stream for JsonEventStream<S, Data>
@@ -61,7 +52,7 @@ where
 
         Pin::new(&mut this.inner).poll_next(cx).map(|opt| {
             opt.map(|result| match result {
-                Err(e) => Err(e.into()),
+                Err(e) => Err(JsonEventStreamError::Source(e)),
                 Ok(event) => event
                     .into_parsed_json_data::<Data>()
                     .map_err(JsonEventStreamError::Json),
@@ -107,17 +98,5 @@ mod test {
 
         let second = block_on(es.next()).unwrap().unwrap();
         assert_eq!(second.data.field, "hi");
-    }
-
-    #[test]
-    fn test_json_event_stream_invalid_utf8_errors() {
-        let chunks: Vec<Result<&[u8], Infallible>> = vec![Ok(b"\xff\xfe".as_slice())];
-
-        let mut es = stream::iter(chunks).json_event_stream::<Datum, _, _>();
-        let result = block_on(es.next()).unwrap();
-        assert!(matches!(
-            result,
-            Err(super::JsonEventStreamError::InvalidUtf8)
-        ));
     }
 }

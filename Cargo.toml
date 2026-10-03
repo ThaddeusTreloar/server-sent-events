@@ -1,11 +1,19 @@
 [package]
 name = "server-sent-events"
+description = "A simple SSE parsing library with extensions for streams, and reqwest and hyper clients."
 version = "0.1.0"
 edition = "2024"
+licence = "MPL-2.0"
+keywords = ["html", "web", "sse"]
+categories = ["web-programming", "parsing"]
+readme = "README.md"
 
 [dependencies]
 bytes = { version = "1", optional = true }
 futures = "0.3.34"
+http-body = { version = "1", optional = true }
+http-body-util = { version = "0.1", optional = true }
+hyper = { version = "1", optional = true, features = ["client"] }
 regex = "1.13.1"
 reqwest = { version = "0.12", optional = true, features = ["stream"] }
 serde = { version = "1.0.229", optional = true }
@@ -14,7 +22,31 @@ thiserror = "2.0.21"
 
 [features]
 json = ["dep:serde", "dep:serde_json"]
+hyper = ["dep:hyper", "dep:http-body", "dep:http-body-util", "dep:bytes"]
 reqwest = ["dep:reqwest", "dep:bytes"]
 
 [dev-dependencies]
 serde = { version = "1.0.229", features = ["derive", "std"]}
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "native-tokio"] }
+
+[[example]]
+name = "raw_json"
+required-features = ["json"]
+
+[[example]]
+name = "reqwest_plain"
+required-features = ["reqwest"]
+
+[[example]]
+name = "reqwest_json"
+required-features = ["reqwest", "json"]
+
+[[example]]
+name = "hyper_plain"
+required-features = ["hyper"]
+
+[[example]]
+name = "hyper_json"
+required-features = ["hyper", "json"]

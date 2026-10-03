@@ -1,14 +1,28 @@
-//! Reqwest client response extensions.
+//! Hyper client response extensions.
 
 use bytes::Bytes;
-use futures::Stream;
-use reqwest::{Error, Response};
+use futures::{Stream, StreamExt};
+use http_body_util::BodyStream;
+use hyper::{Error, Response, body::Incoming};
 
 #[cfg(feature = "json")]
 use crate::stream::JsonEventStream;
 use crate::stream::{EventStream, EventStreamExt};
 
-/// Extension to adapt reqwest body responses to an event stream.
+/// `hyper::body::Incoming` only implements `http_body::Body` (a
+/// poll-one-frame-at-a-time trait), not `futures::Stream`. This turns it
+/// into a plain byte stream, discarding trailer frames and passing frame-
+/// level errors straight through.
+fn into_byte_stream(incoming: Incoming) -> impl Stream<Item = Result<Bytes, Error>> {
+    BodyStream::new(incoming).filter_map(|frame| {
+        std::future::ready(match frame {
+            Ok(frame) => frame.into_data().ok().map(Ok),
+            Err(e) => Some(Err(e)),
+        })
+    })
+}
+
+/// Extension to adapt hyper body responses to an event stream.
 pub trait ResponseExt {
     /// Parses this response's body as a stream of server-sent events.
     fn event_stream(self) -> EventStream<impl Stream<Item = Result<Bytes, Error>>>;
@@ -23,9 +37,9 @@ pub trait ResponseExt {
         Data: serde::de::DeserializeOwned;
 }
 
-impl ResponseExt for Response {
+impl ResponseExt for Response<Incoming> {
     fn event_stream(self) -> EventStream<impl Stream<Item = Result<Bytes, Error>>> {
-        self.bytes_stream().event_stream()
+        into_byte_stream(self.into_body()).event_stream()
     }
 
     #[cfg(feature = "json")]
@@ -35,6 +49,6 @@ impl ResponseExt for Response {
     where
         Data: serde::de::DeserializeOwned,
     {
-        self.bytes_stream().json_event_stream::<Data, _, _>()
+        into_byte_stream(self.into_body()).json_event_stream::<Data, _, _>()
     }
 }

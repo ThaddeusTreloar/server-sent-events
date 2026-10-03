@@ -3,16 +3,10 @@ use std::time::Duration;
 use crate::event::{Event, buffer::EventBuffer};
 
 #[derive(Debug, Default)]
-pub struct EventStreamState {
+pub(crate) struct EventStreamState {
     event_buffer: EventBuffer,
     line_buffer: String,
     line_buffer_position: usize,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum EventStreamStateError {
-    #[error("Received invalid utf8 in buffer.")]
-    InvalidUtf8,
 }
 
 impl EventStreamState {
@@ -89,21 +83,15 @@ impl EventStreamState {
         lines
     }
 
-    pub(crate) fn parse(
-        &mut self,
-        bytes: &[u8],
-    ) -> Result<Vec<Event<String>>, EventStreamStateError> {
-        // The spec defines all data must be valid utf8
-        let new_string =
-            std::str::from_utf8(bytes).map_err(|_| EventStreamStateError::InvalidUtf8)?;
+    pub(crate) fn parse(&mut self, bytes: &[u8]) -> Vec<Event<String>> {
+        // Per spec, decoding never fails outright - malformed byte
+        // sequences are replaced with U+FFFD and decoding continues.
+        let new_string = String::from_utf8_lossy(bytes);
 
-        let events: Vec<Event<String>> = self
-            .extract_lines(new_string)
+        self.extract_lines(&new_string)
             .into_iter()
             .flat_map(|line| self.parse_line(line))
-            .collect();
-
-        Ok(events)
+            .collect()
     }
 
     fn parse_line(&mut self, mut content: String) -> Option<Event<String>> {
@@ -462,11 +450,7 @@ mod test {
 
         let buf = String::from("event: noop\n");
 
-        let parse_result = state.parse(buf.as_bytes());
-
-        assert!(parse_result.is_ok());
-
-        let parse_output = parse_result.unwrap();
+        let parse_output = state.parse(buf.as_bytes());
 
         assert!(parse_output.is_empty());
     }
@@ -476,12 +460,8 @@ mod test {
         let mut state = EventStreamState::new();
 
         let buf = String::from("data: hello\n");
-        let mut parse_result = state.parse(buf.as_bytes());
-        assert!(parse_result.is_ok());
-        parse_result = state.parse(String::from("\n").as_bytes());
-        assert!(parse_result.is_ok());
-
-        let parse_output = parse_result.unwrap();
+        let _ = state.parse(buf.as_bytes());
+        let parse_output = state.parse(String::from("\n").as_bytes());
 
         assert!(parse_output.len() == 1);
 
@@ -495,10 +475,7 @@ mod test {
         let mut state = EventStreamState::new();
 
         let buf = String::from("event: myevent\ndata: somedata\n\n");
-        let parse_result = state.parse(buf.as_bytes());
-        assert!(parse_result.is_ok());
-
-        let parse_output = parse_result.unwrap();
+        let parse_output = state.parse(buf.as_bytes());
 
         assert!(parse_output.len() == 1);
 
