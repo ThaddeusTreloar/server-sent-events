@@ -19,7 +19,7 @@ Anything implementing `futures::Stream<Item = Result<B, E>>` where `B: AsRef<[u8
 `EventStreamExt` trait (see [`examples/raw_plain.rs`](./examples/raw_plain.rs),
 runnable via `cargo run --example raw_plain`):
 
-```rust,ignore
+```rust
 use futures::StreamExt;
 use server_sent_events::stream::EventStreamExt;
 
@@ -50,7 +50,7 @@ When the `json` feature is enabled, streams also get `.json_event_stream::<T>()`
 via the `EventStreamExt` trait (see [`examples/raw_json.rs`](./examples/raw_json.rs),
 runnable via `cargo run --example raw_json --features json`):
 
-```rust,ignore
+```rust
 use futures::StreamExt;
 use serde::Deserialize;
 use server_sent_events::stream::EventStreamExt;
@@ -90,7 +90,7 @@ an `Err` for that item without ending the stream.
 `ResponseExt`. See [`examples/reqwest_plain.rs`](./examples/reqwest_plain.rs) (and
 [`examples/reqwest_json.rs`](./examples/reqwest_json.rs) for the JSON variant):
 
-```rust,ignore
+```rust,no_run
 use futures::StreamExt;
 use server_sent_events::reqwest::ResponseExt;
 
@@ -124,7 +124,7 @@ async fn main() -> Result<(), reqwest::Error> {
 `.json_event_stream::<T>()` via `ResponseExt`. See [`examples/hyper_plain.rs`](./examples/hyper_plain.rs)
 (and [`examples/hyper_json.rs`](./examples/hyper_json.rs) for the JSON variant):
 
-```rust,ignore
+```rust,no_run
 use bytes::Bytes;
 use futures::StreamExt;
 use http_body_util::Empty;

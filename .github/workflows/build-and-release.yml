@@ -29,18 +29,18 @@ jobs:
       run: cargo fmt --check
 
     - name: Lint with Clippy
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --all-features -- -D warnings
 
     - name: Build project
-      run: cargo build --verbose
+      run: cargo build --verbose --all-features
 
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --all-features
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 'lts/*'
+        node-version: '24'
 
     - name: Install Dependencies
       run: |

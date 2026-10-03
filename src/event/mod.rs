@@ -85,9 +85,10 @@ pub enum EventParsingError {
 
 #[cfg(test)]
 mod test {
-    use serde::Deserialize;
-
+    #[cfg(feature = "json")]
     use crate::event::Event;
+    #[cfg(feature = "json")]
+    use serde::Deserialize;
 
     #[cfg(feature = "json")]
     #[derive(Debug, Deserialize)]
