@@ -1,0 +1,34 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "group:monorepos",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separatePatchReleases"
+  ],
+  "labels": ["dependencies", "renovate"],
+  "reviewers": ["thaddeus.treloar@protonmail.com"],
+  "assignees": ["thaddeus.treloar@protonmail.com"],
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "description": "Group Rust (Cargo) dependency updates per component",
+      "matchManagers": ["cargo"],
+      "matchFileNames": ["src/**"],
+      "groupName": "Rust dependencies",
+      "automerge": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": true
+  }
+}
