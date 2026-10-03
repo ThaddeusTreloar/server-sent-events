@@ -8,7 +8,8 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "sed -i.bak \"s/^version = \\\".*\\\"/version = \\\"${nextRelease.version}\\\"/\" Cargo.toml && rm -f Cargo.toml.bak && cargo check --quiet"
+        "prepareCmd": "sed -i.bak \"s/^version = \\\".*\\\"/version = \\\"${nextRelease.version}\\\"/\" Cargo.toml && rm -f Cargo.toml.bak && cargo check --quiet",
+        "publishCmd": "echo \"released=true\" >> \"$GITHUB_OUTPUT\""
       }
     ],
     [
