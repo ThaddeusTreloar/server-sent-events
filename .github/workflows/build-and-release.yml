@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v2
@@ -42,12 +42,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
+      uses: actions/setup-node@v5
 
     - name: Install Dependencies
       run: |
@@ -57,4 +55,4 @@ jobs:
     - name: Run Semantic Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npx semantic-release -d
+      run: npx semantic-release
