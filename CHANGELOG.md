@@ -1,3 +1,10 @@
+## [0.1.1](https://github.com/ThaddeusTreloar/server-sent-events/compare/v0.1.0...v0.1.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **state:** performance improvements for parsing functions. ([9a64b4f](https://github.com/ThaddeusTreloar/server-sent-events/commit/9a64b4f30280d4256f2ad8d2bda201c7da3ad192))
+
 # [0.1.0](https://github.com/ThaddeusTreloar/server-sent-events/compare/v0.0.0...v0.1.0) (2026-10-03)
 
 
