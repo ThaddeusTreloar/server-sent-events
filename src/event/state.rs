@@ -47,16 +47,10 @@ impl EventStreamState {
             ),
         };
 
-        let line = self
-            .line_buffer
-            .drain(0..string_end_pos)
-            .collect::<String>();
+        let line = self.line_buffer[..string_end_pos].to_string();
+        let terminator_len = if is_crlf { 2 } else { 1 };
 
-        if is_crlf {
-            let _ = self.line_buffer.drain(0..2);
-        } else {
-            let _ = self.line_buffer.drain(0..1);
-        }
+        self.line_buffer.drain(..string_end_pos + terminator_len);
 
         // reset our position
         self.line_buffer_position = 0;
@@ -89,28 +83,22 @@ impl EventStreamState {
         let new_string = String::from_utf8_lossy(bytes);
 
         self.extract_lines(&new_string)
-            .into_iter()
+            .iter()
             .flat_map(|line| self.parse_line(line))
             .collect()
     }
 
-    fn parse_line(&mut self, mut content: String) -> Option<Event<String>> {
+    fn parse_line(&mut self, content: &str) -> Option<Event<String>> {
         if content.is_empty() {
             return self.event_buffer.dispatch();
         }
 
-        let (field, mut value) = match content.find(':') {
-            Some(0) => return None,
+        let (field, mut value) = match content.split_once(':') {
+            // Begins with colon, this is an sse comment
+            Some(("", _)) => return None,
+            // No colon, the entire content is treated as a field name
             None => (content, None),
-            Some(pos) => (
-                content.drain(0..pos).collect(),
-                // Drain panics on out of bounds so we need to
-                // ensure there are chars to drain beyond the
-                // ':' delimiter
-                Some(content)
-                    .filter(|s| s.len() > 1)
-                    .map(|mut s| s.drain(1..).collect::<String>()),
-            ),
+            Some((left, right)) => (left, Some(right)),
         };
 
         // Must remove the first character if it is U+0020
@@ -118,17 +106,26 @@ impl EventStreamState {
         if let Some(val) = value.as_mut()
             && val.starts_with(' ')
         {
-            val.remove(0);
+            // We know that there is at least on character
+            // so this is safe.
+            *val = &val[1..];
         }
 
-        match field.as_str() {
-            "event" => self.event_buffer.event = value,
+        // We may have trimmed this to nothing.
+        let _ = value.take_if(|v| v.is_empty());
+
+        match field {
+            "event" => self.event_buffer.event = value.map(String::from),
             "data" => {
                 // The spec dicates we always append a line feed
                 // to the end of a data string before appending
                 // to the existing state.
-                let mut val = value.unwrap_or(String::new());
+                let mut val = String::with_capacity(value.map_or(0, str::len) + 1);
+                if let Some(v) = value {
+                    val.push_str(v);
+                }
                 val.push('\n');
+
                 match self.event_buffer.data.as_mut() {
                     None => {
                         let _ = self.event_buffer.data.replace(val);
@@ -142,12 +139,12 @@ impl EventStreamState {
                 if let Some(val) = value
                     && !val.contains('\0')
                 {
-                    let _ = self.event_buffer.last_event_id.replace(val);
+                    let _ = self.event_buffer.last_event_id.replace(val.into());
                 }
             }
             "retry" => {
                 if let Some(val) = value
-                    && val.chars().all(|c| c.is_ascii_digit())
+                    && val.bytes().all(|c| c.is_ascii_digit())
                 {
                     // If there is a parsing error we will just ignore the line.
                     // This will only catch if the number is larger than u64 as the
@@ -310,7 +307,7 @@ mod test {
     fn test_line_parsing_no_vals() {
         let mut state = EventStreamState::new();
 
-        let maybe_empty_event = state.parse_line(String::new());
+        let maybe_empty_event = state.parse_line("");
 
         assert!(maybe_empty_event.is_none());
     }
@@ -319,9 +316,9 @@ mod test {
     fn test_line_parsing_no_data() {
         let mut state = EventStreamState::new();
 
-        let maybe_empty_event = state.parse_line(String::from("event: myevent"));
+        let maybe_empty_event = state.parse_line("event: myevent");
         assert!(maybe_empty_event.is_none());
-        let maybe_empty_event = state.parse_line(String::from(""));
+        let maybe_empty_event = state.parse_line("");
         assert!(maybe_empty_event.is_none());
         assert!(state.event_buffer.event.is_none());
         assert!(state.event_buffer.data.is_none());
@@ -331,15 +328,15 @@ mod test {
     fn test_line_parsing_with_data() {
         let mut state = EventStreamState::new();
 
-        let mut maybe_event = state.parse_line(String::from("event: myevent"));
+        let mut maybe_event = state.parse_line("event: myevent");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from("data: hello world"));
+        maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from("id: some-id"));
+        maybe_event = state.parse_line("id: some-id");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from("retry: 1000"));
+        maybe_event = state.parse_line("retry: 1000");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
@@ -355,9 +352,9 @@ mod test {
     fn test_line_parsing_with_default_event_name() {
         let mut state = EventStreamState::new();
 
-        let mut maybe_event = state.parse_line(String::from("data: hello world"));
+        let mut maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
@@ -373,19 +370,19 @@ mod test {
     fn test_line_parsing_id_persists() {
         let mut state = EventStreamState::new();
 
-        let mut maybe_event = state.parse_line(String::from("data: hello world"));
+        let mut maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from("id: some-id"));
+        maybe_event = state.parse_line("id: some-id");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
         assert!(event.id == "some-id");
 
-        let mut maybe_event = state.parse_line(String::from("data: hello world"));
+        let mut maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
@@ -396,19 +393,19 @@ mod test {
     fn test_line_parsing_retry_persists() {
         let mut state = EventStreamState::new();
 
-        let mut maybe_event = state.parse_line(String::from("data: hello world"));
+        let mut maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from("retry: 1000"));
+        maybe_event = state.parse_line("retry: 1000");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
         assert!(event.retry.unwrap() == Duration::from_millis(1000));
 
-        let mut maybe_event = state.parse_line(String::from("data: hello world"));
+        let mut maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
@@ -419,11 +416,11 @@ mod test {
     fn test_line_parsing_with_multiline_data() {
         let mut state = EventStreamState::new();
 
-        let mut maybe_event = state.parse_line(String::from("data: hello world"));
+        let mut maybe_event = state.parse_line("data: hello world");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from("data: and friends"));
+        maybe_event = state.parse_line("data: and friends");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
@@ -432,9 +429,9 @@ mod test {
         assert!(state.event_buffer.event.is_none());
         assert!(state.event_buffer.data.is_none());
 
-        maybe_event = state.parse_line(String::from("data: hello world\nand friends"));
+        maybe_event = state.parse_line("data: hello world\nand friends");
         assert!(maybe_event.is_none());
-        maybe_event = state.parse_line(String::from(""));
+        maybe_event = state.parse_line("");
         assert!(maybe_event.is_some());
 
         let event = maybe_event.unwrap();
